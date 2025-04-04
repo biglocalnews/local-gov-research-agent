@@ -14,11 +14,10 @@ etc.).
 ## Web Research via Claude Desktop + MCP
 
 To tinker with Claude as a research agent that drives the browser for gathering
-agency metadata, install and confifgure the following:
+agency metadata, install and configure the following:
 
 - Claude Desktop
-- A browser automation plugin for Claude Desktop that supports the [Model Context Protocol](https://github.com/modelcontextprotocol/servers) such as:
- - [playwright-mcp](https://github.com/microsoft/playwright-mcp)
+- A browser automation plugin for Claude Desktop that supports the [Model Context Protocol](https://github.com/modelcontextprotocol/servers) such as [playwright-mcp](https://github.com/microsoft/playwright-mcp)
 
 ## Data sources
 
