@@ -3,6 +3,7 @@
 ## TO DO
 
 - Ingest Census list of gov agencies into database (SQLite or Postgres)
+  - Supplemenet this list with additional bodies from US territories       
   - Create table(s) or interoperate with Metadata admin?
 - Install [playwright-mcp](https://github.com/microsoft/playwright-mcp)
 - Custom Model Context Protocol server to inject metadata into the database
