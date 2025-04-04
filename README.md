@@ -1,24 +1,8 @@
 # Local Government Research Agent
 
-## TO DO
-
-- Ingest Census list of gov agencies into database (SQLite or Postgres)
-  - Supplemenet this list with additional bodies from US territories       
-  - Create table(s) or interoperate with Metadata admin?
-- Install [playwright-mcp](https://github.com/microsoft/playwright-mcp)
-- Custom Model Context Protocol server to inject metadata into the database
-
-
-## Agent tasks
-
-- Find agency website
-- Find agenda and meetings page
-- Find where meeting videos/audio are posted
-- Find all decision-making and advisory bodies
-- Find meeting dates of all bodies
-- Emit structured data (e.g. JSON) for location of agendas, etc and entity metadata
-- Identify civic data platform, if any (e.g. CivicPlus, Legistar)
-
+R&D on use of agents to assist with metadata gathering around local
+government meetings and resources (agendas, minutes, meeting videos,
+etc.).
 
 ## User stories
 
@@ -26,3 +10,17 @@
 - What information is missing? Can you help me find details about meetings that are missing information I need?
 - What types of information is most important for me to know what's worth covering? (Date, time of meeting start, additional side-meetings, agenda, packets, transcripts, audio, cancelled?, deleted?, time-changed?)
 - Where should I deploy reporters/documenters? What upcoming meetings look like they will be most crucial to cover and don't have associated information?
+
+## Claude Desktop to Drive for Web Research
+
+To tinker with Claude as a research agent that drives the browser for gathering
+agency metadata, install and confifgure the following:
+
+- Claude Desktop
+- A browser automation plugin for Claude Desktop that supports the [Model Context Protocol](https://github.com/modelcontextprotocol/servers) such as:
+ - [playwright-mcp](https://github.com/microsoft/playwright-mcp)
+
+## Data sources
+
+- [Census list of gov entities](https://www.census.gov/data/tables/2022/econ/gus/2022-governments.html)
+
