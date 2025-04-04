@@ -11,7 +11,7 @@ etc.).
 - What types of information is most important for me to know what's worth covering? (Date, time of meeting start, additional side-meetings, agenda, packets, transcripts, audio, cancelled?, deleted?, time-changed?)
 - Where should I deploy reporters/documenters? What upcoming meetings look like they will be most crucial to cover and don't have associated information?
 
-## Claude Desktop to Drive for Web Research
+## Web Research via Claude Desktop + MCP
 
 To tinker with Claude as a research agent that drives the browser for gathering
 agency metadata, install and confifgure the following:
