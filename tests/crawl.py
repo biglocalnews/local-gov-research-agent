@@ -179,14 +179,14 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     browser_config = BrowserConfig(
         browser_type="chromium",
         headless=True,
-        viewport_width=1920,  # Increased for better calendar display
+        viewport_width=1920,
         viewport_height=1080,
         java_script_enabled=True,
         verbose=True,
-        ignore_https_errors=True,  # Some sites have mixed content
+        ignore_https_errors=True,
         user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        text_mode=False,  # Keep images enabled for calendar embeds
-        light_mode=False  # Keep full browser features for calendar embeds
+        text_mode=False,
+        light_mode=False,
     )
     
     results = {
@@ -228,7 +228,7 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
         scraping_strategy=LXMLWebScrapingStrategy(),
         excluded_tags=["style", "nav", "footer", "header", "aside"],
         exclude_external_links=True,
-        cache_mode=CacheMode.ENABLED,
+        # cache_mode=CacheMode.ENABLED,
         wait_until="networkidle",
         stream=True,
         verbose=True,
@@ -282,43 +282,46 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
         # Phase 2: Extract meetings from candidate pages
         print("\nPHASE 2: Extracting meetings from candidate pages...")
         
-        llm_strategy = LLMExtractionStrategy(
-            llm_config=llm_config,
-            schema=MeetingInfo.model_json_schema(),
-            extraction_type="schema",
-            instruction=extraction_instruction,
-            chunk_token_threshold=6000,  # Increased to reduce API calls
-            overlap_rate=0.05,  # Reduced since we're processing full pages
-            apply_chunking=True,
-            input_format="html",
-            verbose=True
-        )
-        
-        extraction_config = CrawlerRunConfig(
-            extraction_strategy=llm_strategy,
-            excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
-            cache_mode=CacheMode.ENABLED,
-            wait_until="networkidle",
-            timeout=30,  # Add timeout to prevent hanging
-            stream=True,  # Enable streaming for better memory management
-            check_robots_txt=True,  # Respect robots.txt
-            verbose=True
-        )
-        
-        # Process all pages concurrently using arun_many with dispatcher
-        async for result in await crawler.arun_many(
-            urls=candidate_urls,
-            config=extraction_config,
-            dispatcher=dispatcher
-        ):
-            if result.success and hasattr(result, 'extracted_content'):
-                process_content_item(result.extracted_content, result.url, results)
-            else:
-                error_msg = getattr(result, 'error_message', 'Unknown error')
-                if "robots.txt" in error_msg:
-                    print(f"Skipped {result.url} - blocked by robots.txt")
+        try:
+            llm_strategy = LLMExtractionStrategy(
+                llm_config=llm_config,
+                schema=MeetingInfo.model_json_schema(),
+                extraction_type="schema",
+                instruction=extraction_instruction,
+                chunk_token_threshold=6000,
+                overlap_rate=0.05,
+                apply_chunking=True,
+                input_format="markdown",
+                verbose=True
+            )
+            
+            extraction_config = CrawlerRunConfig(
+                extraction_strategy=llm_strategy,
+                excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
+                # cache_mode=CacheMode.ENABLED,
+                wait_until="networkidle",
+                stream=True,
+                check_robots_txt=True,
+                verbose=True,
+            )
+            
+            # Process all pages concurrently using arun_many with dispatcher
+            async for result in await crawler.arun_many(
+                urls=candidate_urls,
+                config=extraction_config,
+                dispatcher=dispatcher
+            ):
+                if result.success and hasattr(result, 'extracted_content'):
+                    process_content_item(result.extracted_content, result.url, results)
                 else:
-                    print(f"Failed to process {result.url}: {error_msg}")
+                    error_msg = getattr(result, 'error_message', 'Unknown error')
+                    if "robots.txt" in error_msg:
+                        print(f"Skipped {result.url} - blocked by robots.txt")
+                    else:
+                        print(f"Failed to process {result.url}: {error_msg}")
+        except Exception as e:
+            print(f"\nError during Phase 2 (Extraction): {str(e)}")
+            print("Continuing with partial results...")
 
     # Deduplicate all meetings first
     all_meetings = deduplicate_meetings(results["meetings"])
