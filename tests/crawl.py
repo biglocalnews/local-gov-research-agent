@@ -153,12 +153,21 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     extraction_instruction = """
     Analyze the HTML content of this government calendar or meetings page.
     Extract ALL meetings listed in the page's table structure, including both past and upcoming meetings.
+    Pay special attention to any embedded calendars or iframes (like Google Calendar) - these often contain the most up-to-date meeting information.
+    
     For each meeting:
     - Extract the committee/board name from the meeting link text
     - Convert the date and time to ISO format with timezone (e.g. 2024-03-31T09:30:00-07:00)
     - Include the full URL for any agenda or minutes links
     - Capture the location exactly as shown
     - Include any meeting title or description if available
+    
+    For embedded calendars:
+    - Look for calendar events and extract their details
+    - Pay attention to recurring events and series
+    - Note any links to agendas or minutes within the calendar entries
+    - Capture the full event description if available
+    
     Do not skip any meetings, and ensure all dates are properly formatted with timezone information.
     """
     
@@ -166,10 +175,14 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     browser_config = BrowserConfig(
         browser_type="chromium",
         headless=True,
-        viewport_width=1280, 
-        viewport_height=800,
+        viewport_width=1920,  # Increased for better calendar display
+        viewport_height=1080,
         java_script_enabled=True,
-        verbose=True
+        verbose=True,
+        ignore_https_errors=True,  # Some sites have mixed content
+        user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        text_mode=False,  # Keep images enabled for calendar embeds
+        light_mode=False  # Keep full browser features for calendar embeds
     )
     
     results = {
@@ -190,10 +203,10 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
             include_external=False,
         ),
         scraping_strategy=LXMLWebScrapingStrategy(),
-        excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
+        excluded_tags=["style", "nav", "footer", "header", "aside"],  # Removed script from excluded tags
         exclude_external_links=True,
         cache_mode=CacheMode.ENABLED,
-        wait_until="domcontentloaded",
+        wait_until="networkidle",  # Wait for network to be idle to ensure iframes load
         stream=True,
         verbose=True
     )
@@ -261,7 +274,7 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
                 extraction_config = CrawlerRunConfig(
                     extraction_strategy=llm_strategy,
                     excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
-                    cache_mode=CacheMode.ENABLED,
+                    cache_mode=CacheMode.BYPASS,
                     wait_until="networkidle",
                     verbose=True
                 )
