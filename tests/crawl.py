@@ -5,11 +5,15 @@ from datetime import datetime
 import pytz
 from typing import Optional, List
 from pydantic import BaseModel, Field, ValidationError
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, BrowserConfig, LLMConfig, CacheMode
+from crawl4ai import (
+    AsyncWebCrawler, CrawlerRunConfig, BrowserConfig, LLMConfig, CacheMode,
+    RateLimiter, CrawlerMonitor, DisplayMode
+)
 from crawl4ai.extraction_strategy import LLMExtractionStrategy
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 import re
+from crawl4ai.async_dispatcher import MemoryAdaptiveDispatcher
 
 
 # Data models for structured meeting information
@@ -191,6 +195,25 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     
     print("Starting analysis...")
     
+    # Set up rate limiting to prevent overwhelming servers
+    rate_limiter = RateLimiter(
+        base_delay=(1.0, 2.0),  # Random delay between 1-2 seconds
+        max_delay=30.0,         # Maximum backoff delay
+        max_retries=3,          # Retry up to 3 times on rate limits
+        rate_limit_codes=[429, 503]  # Handle these rate limit codes
+    )
+    
+    # Set up monitoring for real-time visibility
+    monitor = CrawlerMonitor()  # Use default settings
+    
+    # Configure dispatcher for adaptive memory management
+    dispatcher = MemoryAdaptiveDispatcher(
+        memory_threshold_percent=70.0,  # Pause if memory exceeds 70%
+        check_interval=1.0,             # Check memory every second
+        max_session_permit=10,          # Maximum concurrent tasks
+        monitor=monitor
+    )
+    
     # Phase 1: Discovery - Find pages likely to contain meeting information
     print("\nPHASE 1: Discovering relevant pages...")
     
@@ -203,12 +226,16 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
             include_external=False,
         ),
         scraping_strategy=LXMLWebScrapingStrategy(),
-        excluded_tags=["style", "nav", "footer", "header", "aside"],  # Removed script from excluded tags
+        excluded_tags=["style", "nav", "footer", "header", "aside"],
         exclude_external_links=True,
         cache_mode=CacheMode.ENABLED,
-        wait_until="networkidle",  # Wait for network to be idle to ensure iframes load
+        wait_until="networkidle",
         stream=True,
-        verbose=True
+        verbose=True,
+        check_robots_txt=True,
+        scan_full_page=True,
+        process_iframes=True,
+        remove_overlay_elements=True
     )
     
     discovered_pages = []
@@ -255,37 +282,43 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
         # Phase 2: Extract meetings from candidate pages
         print("\nPHASE 2: Extracting meetings from candidate pages...")
         
-        for candidate_url in candidate_urls:
-            print(f"  Processing: {candidate_url}")
-            try:
-                # Create fresh LLM strategy for each page
-                llm_strategy = LLMExtractionStrategy(
-                    llm_config=llm_config,
-                    schema=MeetingInfo.model_json_schema(),
-                    extraction_type="schema",
-                    instruction=extraction_instruction,
-                    chunk_token_threshold=3000,
-                    overlap_rate=0.1,
-                    apply_chunking=True,
-                    input_format="html",
-                    verbose=True
-                )
-                
-                extraction_config = CrawlerRunConfig(
-                    extraction_strategy=llm_strategy,
-                    excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
-                    cache_mode=CacheMode.BYPASS,
-                    wait_until="networkidle",
-                    verbose=True
-                )
-                
-                extraction_result = await crawler.arun(url=candidate_url, config=extraction_config)
-                
-                if extraction_result.success and hasattr(extraction_result, 'extracted_content'):
-                    process_content_item(extraction_result.extracted_content, candidate_url, results)
-            
-            except Exception as e:
-                print(f"Error processing {candidate_url}: {str(e)}")
+        llm_strategy = LLMExtractionStrategy(
+            llm_config=llm_config,
+            schema=MeetingInfo.model_json_schema(),
+            extraction_type="schema",
+            instruction=extraction_instruction,
+            chunk_token_threshold=6000,  # Increased to reduce API calls
+            overlap_rate=0.05,  # Reduced since we're processing full pages
+            apply_chunking=True,
+            input_format="html",
+            verbose=True
+        )
+        
+        extraction_config = CrawlerRunConfig(
+            extraction_strategy=llm_strategy,
+            excluded_tags=["script", "style", "nav", "footer", "header", "aside"],
+            cache_mode=CacheMode.ENABLED,
+            wait_until="networkidle",
+            timeout=30,  # Add timeout to prevent hanging
+            stream=True,  # Enable streaming for better memory management
+            check_robots_txt=True,  # Respect robots.txt
+            verbose=True
+        )
+        
+        # Process all pages concurrently using arun_many with dispatcher
+        async for result in await crawler.arun_many(
+            urls=candidate_urls,
+            config=extraction_config,
+            dispatcher=dispatcher
+        ):
+            if result.success and hasattr(result, 'extracted_content'):
+                process_content_item(result.extracted_content, result.url, results)
+            else:
+                error_msg = getattr(result, 'error_message', 'Unknown error')
+                if "robots.txt" in error_msg:
+                    print(f"Skipped {result.url} - blocked by robots.txt")
+                else:
+                    print(f"Failed to process {result.url}: {error_msg}")
 
     # Deduplicate all meetings first
     all_meetings = deduplicate_meetings(results["meetings"])
@@ -312,6 +345,8 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
         "upcoming_meetings": upcoming_meetings[:5]
     }
 
+    llm_strategy.show_usage()
+    
     print_results(results)
     return results
 
