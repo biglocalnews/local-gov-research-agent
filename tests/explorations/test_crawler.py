@@ -20,6 +20,7 @@ from crawl4ai.async_dispatcher import MemoryAdaptiveDispatcher
 class Meeting(BaseModel):
     convening_body: str = Field(description="Name of the body/committee holding the meeting")
     date: datetime = Field(description="Date and time of the meeting")
+    timezone: str = Field(description="The timezone of the meeting (e.g. 'America/Los_Angeles')")
     agenda_url: Optional[str] = Field(description="URL to the meeting agenda if available", default=None)
     minutes_url: Optional[str] = Field(description="URL to the meeting minutes if available", default=None)
     title: Optional[str] = Field(description="Title or description of the meeting if available", default=None)
@@ -56,7 +57,7 @@ def process_content_item(content: dict, page_url: str, results: dict):
         if isinstance(meeting_data, dict):
             try:
                 # Remove any extra fields not in our model
-                valid_fields = {'convening_body', 'date', 'agenda_url', 'minutes_url', 'title', 'location'}
+                valid_fields = {'convening_body', 'date', 'timezone', 'agenda_url', 'minutes_url', 'title', 'location'}
                 cleaned_data = {k: v for k, v in meeting_data.items() if k in valid_fields}
                 meeting_obj = Meeting(**cleaned_data)
                 results["meetings"].append(meeting_obj)
@@ -162,6 +163,15 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     For each meeting:
     - Extract the committee/board name from the meeting link text
     - Convert the date and time to ISO format with timezone (e.g. 2024-03-31T09:30:00-07:00)
+    - Determine the timezone of the meeting (e.g. 'America/Los_Angeles' for PST/PDT)
+        * Look for explicit timezone mentions in the page
+        * Check for timezone abbreviations (PST, EST, etc.)
+        * Note any daylight savings time information
+        * If no timezone is specified:
+            - Determine the government's location from the website (domain, contact info, etc.)
+            - Use the state's timezone if the location is unclear
+            - For federal agencies, use the timezone of their headquarters
+        * Always provide a timezone - this field is required
     - Include the full URL for any agenda or minutes links
     - Capture the location exactly as shown
     - Include any meeting title or description if available
@@ -171,6 +181,7 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     - Pay attention to recurring events and series
     - Note any links to agendas or minutes within the calendar entries
     - Capture the full event description if available
+    - Extract timezone information from calendar settings if available
     
     Do not skip any meetings, and ensure all dates are properly formatted with timezone information.
     """
@@ -332,8 +343,13 @@ async def analyze_governance_website(url: str, openai_api_key: str = None):
     upcoming_meetings = []
 
     for meeting in all_meetings:
-        # If meeting.date doesn't have tzinfo, assume it's in UTC
-        meeting_date = meeting.date if meeting.date.tzinfo else pytz.UTC.localize(meeting.date)
+        try:
+            tz = pytz.timezone(meeting.timezone)
+            meeting_date = meeting.date if meeting.date.tzinfo else tz.localize(meeting.date)
+        except pytz.exceptions.UnknownTimeZoneError:
+            print(f"Error: Unknown timezone '{meeting.timezone}' for meeting {meeting.convening_body}")
+            continue  # Skip meetings with invalid timezones
+        
         if meeting_date < now:
             past_meetings.append(meeting)
         else:
