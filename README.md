@@ -48,8 +48,6 @@ Currently it just prints the results.
 
 The script requires an API key that corresponds to the model called in the script (currently OpenAI's `gpt-4o-mini`.) You can provide the key via `--api-key` argument or `OPENAI_API_KEY` environment variable.
 
-
-
 ```bash
 # Install dependencies using uv
 uv sync
@@ -60,14 +58,3 @@ uv run tests/crawl.py --url "https://example.gov"
 # If you want to pass an API key directly
 uv run tests/crawl.py --url "https://example.gov" --api-key "your-api-key"
 ```
-
-### Testing notes
-
-The script works on the following sites:
-1. [SF Board of Supervisors](https://sfbos.org/)
-1. 
-
-The script fails on the following sites:
-1. [Seattle City Council](https://www.seattle.gov/council) (reason: schedule is in a Google Calendar iframe)
-1. [Brainerd School Board](https://www.isd181.org/district/board_of_education) (reason: schedule is in a Google Calendar iframe)
-1. [Austin City Council](https://www.austintexas.gov/austin-city-council) (reason: crawler max set too low for this big a site)
